@@ -1,0 +1,15 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "cloudFunctions": {
+    "nodejs": {
+      "includeFiles": []
+    }
+  },
+  "agents": {
+    "framework": "openai-agents-sdk",
+    "externalNodeModules": ["@openai/agents", "openai"],
+    "timeout": 300
+  }
+}

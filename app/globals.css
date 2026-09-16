@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #fdf8f0;
+    --foreground: #1a1a1a;
+  }
+
+  .dark {
+    --background: #0f0f0f;
+    --foreground: #f5f0e8;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+}
+
+@layer components {
+  .tree-line {
+    @apply absolute left-4 top-8 bottom-0 w-px bg-neutral-300 dark:bg-neutral-700;
+  }
+
+  .source-card-academic {
+    @apply border-l-4 border-l-blue-400 dark:border-l-blue-500;
+  }
+
+  .source-card-web {
+    @apply border-l-4 border-l-green-400 dark:border-l-green-500;
+  }
+
+  .prose-research h1 {
+    @apply font-serif text-2xl font-bold mt-8 mb-4 text-neutral-900 dark:text-warm-100;
+  }
+
+  .prose-research h2 {
+    @apply font-serif text-xl font-semibold mt-6 mb-3 text-neutral-800 dark:text-warm-200;
+  }
+
+  .prose-research h3 {
+    @apply font-serif text-lg font-medium mt-4 mb-2 text-neutral-700 dark:text-warm-300;
+  }
+
+  .prose-research p {
+    @apply mb-4 leading-relaxed text-neutral-700 dark:text-neutral-300;
+  }
+
+  .prose-research ul, .prose-research ol {
+    @apply mb-4 pl-6 space-y-1;
+  }
+
+  .prose-research li {
+    @apply text-neutral-700 dark:text-neutral-300;
+  }
+
+  .prose-research strong {
+    @apply font-semibold text-neutral-900 dark:text-neutral-100;
+  }
+
+  .prose-research a {
+    @apply text-blue-600 dark:text-blue-400 underline hover:no-underline;
+  }
+
+  .prose-research blockquote {
+    @apply border-l-4 border-neutral-300 dark:border-neutral-600 pl-4 italic text-neutral-600 dark:text-neutral-400 my-4;
+  }
+
+  .prose-research table {
+    @apply w-full border-collapse my-4 text-sm;
+  }
+
+  .prose-research thead {
+    @apply bg-neutral-100 dark:bg-neutral-800;
+  }
+
+  .prose-research th {
+    @apply border border-neutral-200 dark:border-neutral-700 px-3 py-2 text-left font-semibold text-neutral-900 dark:text-neutral-100;
+  }
+
+  .prose-research td {
+    @apply border border-neutral-200 dark:border-neutral-700 px-3 py-2 text-neutral-700 dark:text-neutral-300;
+  }
+
+  .prose-research tr:nth-child(even) {
+    @apply bg-neutral-50 dark:bg-neutral-800/50;
+  }
+
+  .prose-research code {
+    @apply bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+
+  .prose-research pre {
+    @apply bg-neutral-100 dark:bg-neutral-800 p-4 rounded-lg overflow-x-auto my-4;
+  }
+
+  .prose-research pre code {
+    @apply bg-transparent p-0;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* Respect reduced-motion preferences and avoid animation churn during heavy
+   SSE update bursts that already cause layout work. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-dot {
+    animation: none;
+  }
+}
+
+/* ── Inline citation markers ────────────────────────────────────────────── */
+/* Citation links in the report body: hover preview + click-to-jump to the
+   matching source card in the SourcesPanel. */
+.citation-link {
+  @apply inline-flex items-center text-blue-600 dark:text-blue-400 no-underline font-medium tabular-nums px-0.5 rounded transition-colors;
+  cursor: pointer;
+}
+.citation-link:hover {
+  @apply bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 underline decoration-dotted;
+}
+
+/* Ghost citations: numbers in the report that don't map to any source.
+   Render in red so the reader (and the citation-coverage panel) sees them. */
+.citation-ghost {
+  @apply inline-flex items-center text-red-600 dark:text-red-400 font-medium tabular-nums px-0.5 rounded;
+  cursor: help;
+  text-decoration: underline wavy;
+  text-decoration-thickness: 1px;
+}
+
+/* Flash highlight on the target source-card when [N] is clicked. The card is
+   often already visible in the viewport (the sources panel is `sticky`), so
+   this flash IS the primary feedback that the click registered — make it
+   strong enough to actually be seen. Solid yellow ring + amber background +
+   brief scale "thump", then fade back to neutral. */
+@keyframes source-flash {
+  0%   {
+    background-color: rgba(250, 204, 21, 0.55);
+    box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.85), 0 0 18px 4px rgba(250, 204, 21, 0.45);
+    transform: scale(1.015);
+  }
+  35% {
+    background-color: rgba(250, 204, 21, 0.35);
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.6), 0 0 14px 3px rgba(250, 204, 21, 0.3);
+    transform: scale(1);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 transparent;
+    transform: scale(1);
+  }
+}
+.source-flash {
+  animation: source-flash 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source-flash {
+    animation: none;
+    /* Still give a non-animated visual ping so the user sees the jump landed. */
+    outline: 2px solid rgba(250, 204, 21, 0.9);
+    outline-offset: 2px;
+  }
+}
