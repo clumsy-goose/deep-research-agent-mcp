@@ -83,6 +83,7 @@ deep-research-agent/
 ├── app/                    # Next.js App Router 前端
 ├── lib/
 │   └── i18n.tsx            # 中 / 英翻译
+├── .mcp.json               # MCP 客户端配置（CodeBuddy / Cursor 等）
 └── edgeone.json            # EdgeOne 部署配置
 ```
 
@@ -116,6 +117,110 @@ deep-research-agent/
 
 ### 超时配置
 `edgeone.json` 中将 Agent 超时设置为 **300 秒**，以适应长时间运行的研究合成。
+
+## MCP 服务
+
+部署后平台会在 **`/mcp`** 端点自动暴露标准 MCP 服务，无需编写或部署任何 MCP Server。构建阶段会扫描 `agents/` 目录，解析每个路由文件**头部注释块**中以 `@mcp_` 为前缀的 JSDoc 字段，把路由注册为 MCP Tool。
+
+本模板只对外暴露 `/research` 一个 Tool：
+
+| 路由 | 文件 | MCP Tool | 说明 |
+|---|---|---|---|
+| `/research` | `agents/research.ts` | `deep_research` | 一次调用完成调研全流程，输入输出语义清晰 |
+| `/chat` | `agents/chat.ts` | 隐藏（`@mcp_hidden true`） | 依赖前端传入 `report` 上下文，AI 客户端无法自行构造 |
+| `/scrape` | `agents/scrape.ts` | 隐藏 | 内部抓取工具，已被 `/research` 管线包含 |
+| `/stop` | `agents/stop.ts` | 隐藏 | 依赖会话粘性路由中止运行，AI 客户端无对应语义 |
+
+最终生成的 Tool 定义：
+
+```json
+{
+  "name": "deep_research",
+  "description": "深度调研。给定一个研究主题或问题，自动分解子问题、联网与学术检索，输出带内联引用的结构化研究报告……",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "question": { "type": "string", "description": "研究主题或问题，描述越具体报告越聚焦" },
+      "depth": { "type": "string", "description": "调研深度，决定子问题数量与报告篇幅", "enum": ["quick", "standard", "deep"], "default": "standard" },
+      "locale": { "type": "string", "description": "报告语言", "enum": ["zh", "en"], "default": "zh" }
+    },
+    "required": ["question"]
+  }
+}
+```
+
+### 本地调试
+
+```bash
+edgeone makers dev
+# MCP 端点：http://localhost:8088/mcp
+```
+
+### 客户端接入
+
+部署后在「构建部署 → Agents」的 MCP 配置区块可一键复制配置片段。以 CodeBuddy 为例，项目根目录的 `.mcp.json`：
+
+```jsonc
+{
+  "mcpServers": {
+    "deep-research": {
+      "type": "http",
+      "url": "https://your-domain.com/mcp",
+      "headers": { "Authorization": "Bearer ${DEEP_RESEARCH_JWT}" }
+    }
+  }
+}
+```
+
+CodeBuddy 支持在 `url` / `headers` 中展开 `${VAR_NAME}`，因此配置文件可提交到仓库，Token 只保留在本地环境变量：
+
+```bash
+export DEEP_RESEARCH_JWT="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+### JWT 鉴权（推荐）
+
+每次 `/research` 调用都会消耗模型额度，对外服务建议在 `edgeone.json` 的 `agents` 下开启鉴权：
+
+```json
+{
+  "agents": {
+    "framework": "openai-agents-sdk",
+    "externalNodeModules": ["@openai/agents", "openai"],
+    "timeout": 300,
+    "auth": {
+      "type": "jwt",
+      "algorithm": "RS256",
+      "verificationKeys": [
+        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A（替换为你的公钥）\n-----END PUBLIC KEY-----"
+      ]
+    }
+  }
+}
+```
+
+生成密钥对：
+
+```bash
+openssl genrsa -out private_key.pem 2048
+openssl rsa -in private_key.pem -pubout -out public_key.pem
+awk '{printf "%s\\n", $0}' public_key.pem   # 转成可粘贴进 JSON 的单行字符串
+```
+
+Token 由你自己的后端签发（平台只持公钥验签）：
+
+```javascript
+import jwt from 'jsonwebtoken';
+const token = jwt.sign({ sub: 'codebuddy' }, privateKey, { algorithm: 'RS256', expiresIn: '7d' });
+```
+
+> 开启鉴权后未携带合法 Token 的请求会被拒绝（401），`/mcp` 不在豁免范围内，从 `initialize` 起就必须携带 `Authorization: Bearer <token>`。修改配置后需重新部署。
+
+### 使用约束
+
+- **请求-响应模式**：MCP `tools/call` 不支持流式中间结果，客户端只接收最终报告；`createSSEResponse` 每 5 秒的 `ping` 心跳用于避免客户端超时断连。
+- **长任务**：`deep` 深度调研接近 300 秒 Agent 超时上限，客户端需容忍 1–5 分钟。
+- **自定义域名**：绑定自定义域名后必须完成接入验证且 HTTPS 证书处于就绪状态，否则 MCP 连接失败；国内站预设域名的鉴权 Cookie 仅 3 小时有效。
 
 ## 相关资源
 

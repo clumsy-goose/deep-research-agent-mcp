@@ -10,6 +10,9 @@
  * When the AI detects the user wants to update/regenerate the report,
  * it includes [SUGGEST_REGENERATE] in its response, which the frontend
  * converts into a "Regenerate Report" button.
+ *
+ * @mcp_hidden true — the `report` context comes from the web UI, an MCP
+ * client cannot construct it on its own.
  */
 import type { AgentContext } from '@edgeone/types';
 import {

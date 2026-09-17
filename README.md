@@ -83,6 +83,7 @@ deep-research-agent/
 ├── app/                    # Next.js App Router frontend
 ├── lib/
 │   └── i18n.tsx            # Chinese / English translations
+├── .mcp.json               # MCP client config (CodeBuddy / Cursor / …)
 └── edgeone.json            # EdgeOne deployment config
 ```
 
@@ -116,6 +117,110 @@ Files under `agents/` run in **session mode**: requests with the same `conversat
 
 ### Timeouts
 Agent timeout is set to **300 seconds** in `edgeone.json` to accommodate long-running research synthesis.
+
+## MCP Server
+
+Once deployed, the platform exposes a standard MCP service at **`/mcp`** — no MCP Server needs to be written or deployed. At build time the `agents/` directory is scanned and the `@mcp_`-prefixed JSDoc fields in each route file's **header comment block** are parsed to register that route as an MCP Tool.
+
+Only `/research` is exposed:
+
+| Route | File | MCP Tool | Why |
+|---|---|---|---|
+| `/research` | `agents/research.ts` | `deep_research` | One call runs the whole pipeline with clear input/output semantics |
+| `/chat` | `agents/chat.ts` | hidden (`@mcp_hidden true`) | Needs the `report` context that only the web UI can supply |
+| `/scrape` | `agents/scrape.ts` | hidden | Internal fetcher, already part of the `/research` pipeline |
+| `/stop` | `agents/stop.ts` | hidden | Abort is tied to sticky-routed web conversations |
+
+Resulting tool definition:
+
+```json
+{
+  "name": "deep_research",
+  "description": "深度调研。给定一个研究主题或问题，自动分解子问题、联网与学术检索，输出带内联引用的结构化研究报告……",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "question": { "type": "string", "description": "研究主题或问题，描述越具体报告越聚焦" },
+      "depth": { "type": "string", "description": "调研深度，决定子问题数量与报告篇幅", "enum": ["quick", "standard", "deep"], "default": "standard" },
+      "locale": { "type": "string", "description": "报告语言", "enum": ["zh", "en"], "default": "zh" }
+    },
+    "required": ["question"]
+  }
+}
+```
+
+### Local debugging
+
+```bash
+edgeone makers dev
+# MCP endpoint: http://localhost:8088/mcp
+```
+
+### Client setup
+
+After deployment, copy the ready-made snippet from **Build & Deploy → Agents → MCP configuration**. For CodeBuddy, a project-level `.mcp.json`:
+
+```jsonc
+{
+  "mcpServers": {
+    "deep-research": {
+      "type": "http",
+      "url": "https://your-domain.com/mcp",
+      "headers": { "Authorization": "Bearer ${DEEP_RESEARCH_JWT}" }
+    }
+  }
+}
+```
+
+CodeBuddy expands `${VAR_NAME}` in `url` / `headers`, so the file can be committed while the token stays in a local env var:
+
+```bash
+export DEEP_RESEARCH_JWT="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+### JWT auth (recommended)
+
+Every `/research` call consumes model quota, so enable auth under `agents` in `edgeone.json`:
+
+```json
+{
+  "agents": {
+    "framework": "openai-agents-sdk",
+    "externalNodeModules": ["@openai/agents", "openai"],
+    "timeout": 300,
+    "auth": {
+      "type": "jwt",
+      "algorithm": "RS256",
+      "verificationKeys": [
+        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A（替换为你的公钥）\n-----END PUBLIC KEY-----"
+      ]
+    }
+  }
+}
+```
+
+Generate the key pair:
+
+```bash
+openssl genrsa -out private_key.pem 2048
+openssl rsa -in private_key.pem -pubout -out public_key.pem
+awk '{printf "%s\\n", $0}' public_key.pem   # single-line form for JSON
+```
+
+Tokens are issued by your own backend (the platform only verifies them):
+
+```javascript
+import jwt from 'jsonwebtoken';
+const token = jwt.sign({ sub: 'codebuddy' }, privateKey, { algorithm: 'RS256', expiresIn: '7d' });
+```
+
+> With auth enabled, requests without a valid token are rejected (401) and `/mcp` is **not** exempt — `Authorization: Bearer <token>` is required from the very first `initialize` request. Redeploy after changing the config.
+
+### Constraints
+
+- **Request/response**: MCP `tools/call` does not stream intermediate results — clients only receive the final report. The 5-second `ping` heartbeat in `createSSEResponse` keeps the connection alive.
+- **Long-running**: `deep` research approaches the 300-second agent timeout; clients should tolerate 1–5 minutes.
+- **Custom domains**: must pass domain verification with a ready HTTPS certificate, otherwise the MCP connection fails. The preset domain's auth cookie on the China site is only valid for 3 hours.
 
 ## Resources
 

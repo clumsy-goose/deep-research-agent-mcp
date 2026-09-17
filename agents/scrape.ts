@@ -7,6 +7,9 @@
  *
  * Uses platform browser tool (op: 'fetch') to render pages and extract text.
  * Fallback: runtime fetch for non-JS pages.
+ *
+ * @mcp_hidden true — internal fetcher, already covered by the /research
+ * pipeline.
  */
 import type { AgentContext } from '@edgeone/types';
 import { createLogger, safeFetch } from './_shared';

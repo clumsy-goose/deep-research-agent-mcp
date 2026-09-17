@@ -10,6 +10,18 @@
  * Runs as a one-shot flow: question → tools → report.
  * Streaming via SSE: tool_call events map to progress stages on the frontend.
  *
+ * Exposed to MCP clients as the `deep_research` tool on the /mcp endpoint —
+ * see the mcp_* annotations below. Only the fields an AI client can fill on
+ * its own are declared; the interactive ones (projectId, urls,
+ * confirmedSubQuestions, decomposeOnly) stay internal to the web UI.
+ *
+ * @mcp_tool_name deep_research
+ * @mcp_description 深度调研。给定一个研究主题或问题，自动分解子问题、联网与学术检索，输出带内联引用的结构化研究报告。适用于技术选型、方案对比、竞品分析、文献综述等需要多源检索并产出长文的任务。注意：一次调用通常耗时 1-5 分钟，不要用于简单的事实性问答。
+ * @mcp_parameters
+ *   question: { "type": "string", "description": "研究主题或问题，描述越具体报告越聚焦", "required": true }
+ *   depth: { "type": "string", "description": "调研深度，决定子问题数量与报告篇幅", "enum": ["quick", "standard", "deep"], "default": "standard" }
+ *   locale: { "type": "string", "description": "报告语言", "enum": ["zh", "en"], "default": "zh" }
+ *
  * Code organisation:
  *   - _shared.ts          → SDK re-exports, logger, sseEvent, safeFetch
  *   - _project-store.ts   → version persistence (mirrors cloud-functions/project)

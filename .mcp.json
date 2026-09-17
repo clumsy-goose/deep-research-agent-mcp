@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "deep-research": {
+      "type": "http",
+      "url": "https://your-domain.com/mcp",
+      "description": "深度调研 Agent（/research → deep_research）",
+      "headers": {
+        "Authorization": "Bearer ${DEEP_RESEARCH_JWT}"
+      }
+    }
+  }
+}
