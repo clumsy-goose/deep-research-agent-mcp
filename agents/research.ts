@@ -487,6 +487,118 @@ Call the decompose_question tool with your generated sub-questions.`,
   yield 'data: [DONE]\n\n';
 }
 
+// ─── MCP (request/response) collapse ─────────────────────────────────────────
+
+/**
+ * Read a request header regardless of whether the runtime hands us a `Headers`
+ * instance or a plain object.
+ */
+function readHeader(context: AgentContext, name: string): string | undefined {
+  const headers: any = (context.request as any)?.headers;
+  if (!headers) return undefined;
+  const value =
+    typeof headers.get === 'function' ? headers.get(name) : (headers[name] ?? headers[name.toLowerCase()]);
+  return value ? String(value) : undefined;
+}
+
+/**
+ * MCP clients reach this route through the platform's /mcp endpoint, which is
+ * strict request/response: it cannot render the SSE progress stream and only
+ * surfaces a final payload. The gateway writes the verified `makers-user-id`
+ * header on MCP calls (client-supplied copies are stripped at the edge), so its
+ * presence is a reliable discriminator.
+ */
+function isMcpRequest(context: AgentContext): boolean {
+  return Boolean(readHeader(context, 'makers-user-id'));
+}
+
+function buildSourcesAppendix(papers: any[], articles: any[]): string {
+  const lines: string[] = [];
+  if (papers.length) {
+    lines.push('', '## 参考来源（学术文献）');
+    papers.forEach((p, i) => {
+      const year = p?.year ? ` (${p.year})` : '';
+      const url = p?.url ? ` — ${p.url}` : '';
+      lines.push(`[${i + 1}] ${p?.title ?? 'Untitled'}${year}${url}`);
+    });
+  }
+  if (articles.length) {
+    lines.push('', '## 参考来源（网络）');
+    articles.forEach((a, i) => {
+      const url = a?.url ? ` — ${a.url}` : '';
+      lines.push(`[${i + 1}] ${a?.title ?? 'Untitled'}${url}`);
+    });
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Drain the research generator and collapse it into one markdown payload.
+ * Only `synthesizer` deltas are collected — `question-decomposer` also emits
+ * ai_response events (the sub-question list) which must not leak into the
+ * report.
+ */
+async function collectResearchResult(
+  question: string,
+  generator: AsyncGenerator<string>,
+): Promise<Response> {
+  let report = '';
+  let subQuestions: string[] = [];
+  let papers: any[] = [];
+  let articles: any[] = [];
+  let error: string | undefined;
+
+  for await (const chunk of generator) {
+    for (const line of String(chunk).split('\n')) {
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6).trim();
+      if (!payload || payload === '[DONE]') continue;
+
+      let evt: any;
+      try { evt = JSON.parse(payload); } catch { continue; }
+
+      switch (evt.type) {
+        case 'ai_response':
+          if (evt.agent === 'synthesizer') report += evt.content ?? '';
+          break;
+        case 'report_replace':
+          report = evt.content ?? report;
+          break;
+        case 'decompose_complete':
+          if (Array.isArray(evt.subQuestions)) subQuestions = evt.subQuestions;
+          break;
+        case 'error_message':
+          error = evt.content;
+          break;
+        case 'subagent_lifecycle': {
+          if (!evt.content) break;
+          try {
+            const parsed = JSON.parse(evt.content);
+            if (evt.agent === 'literature-searcher') papers = parsed;
+            else if (evt.agent === 'web-researcher') articles = parsed;
+            else if (evt.agent === 'question-decomposer' && Array.isArray(parsed)) subQuestions = parsed;
+          } catch {}
+          break;
+        }
+      }
+    }
+  }
+
+  if (!report) {
+    return new Response(JSON.stringify({ error: error || 'Research produced no report' }), {
+      status: 500, headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    });
+  }
+
+  const markdown = report + buildSourcesAppendix(papers, articles);
+  logger.log(`[mcp] collapsed result: report=${report.length}chars papers=${papers.length} articles=${articles.length}`);
+
+  return new Response(markdown, {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain; charset=UTF-8' },
+  });
+}
+
 // ─── HTTP Handler ────────────────────────────────────────────────────────────
 
 export async function onRequest(context: AgentContext) {
@@ -539,5 +651,11 @@ export async function onRequest(context: AgentContext) {
     citationStyle,
   };
   const generator = streamResearch(question, opts, context, signal);
+
+  // MCP clients get a single collapsed payload; the web UI keeps the SSE stream.
+  if (isMcpRequest(context)) {
+    return await collectResearchResult(question, generator);
+  }
+
   return createSSEResponse(generator, signal);
 }

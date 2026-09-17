@@ -7,8 +7,9 @@
  * The target conversation_id is therefore read from the request body, with
  * header fallback only as a defensive last resort.
  *
- * @mcp_hidden true — abort is tied to sticky-routed web conversations, it has
- * no meaning for an MCP client.
+ * @mcp_hidden true
+ * Not exposed as an MCP tool: abort is tied to sticky-routed web
+ * conversations, it has no meaning for an MCP client.
  */
 
 import type { AgentContext } from '@edgeone/types';

@@ -11,8 +11,9 @@
  * it includes [SUGGEST_REGENERATE] in its response, which the frontend
  * converts into a "Regenerate Report" button.
  *
- * @mcp_hidden true — the `report` context comes from the web UI, an MCP
- * client cannot construct it on its own.
+ * @mcp_hidden true
+ * Not exposed as an MCP tool: the `report` context comes from the web UI, an
+ * MCP client cannot construct it on its own.
  */
 import type { AgentContext } from '@edgeone/types';
 import {
